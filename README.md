@@ -44,7 +44,23 @@ python app.py
 dist-v0.10\CodexProfiles\CodexProfiles.exe
 ```
 
-构建目录和 EXE 输出目录会被 Git 忽略。正式发布二进制版本时，建议将整个目录作为 GitHub Release 附件，而不是把构建产物提交到源码仓库。
+如果你希望生成可以双击安装的单文件安装包，请运行：
+
+```powershell
+.\build_release.ps1
+```
+
+脚本会先构建目录版程序，再使用 Inno Setup（Windows 安装包制作工具）生成：
+
+```text
+dist-v0.10\CodexProfiles-Setup-v0.10.0.exe
+```
+
+这个安装包支持选择安装目录、创建开始菜单和桌面快捷方式，卸载入口也会自动写入 Windows。构建目录和 EXE 输出目录会被 Git 忽略，正式发布时应将安装包作为 GitHub Release（版本发布页）附件。
+
+## 下载与安装
+
+打开项目的 [Releases](https://github.com/threeing3/codex-profile-launcher/releases) 页面，下载最新的 `CodexProfiles-Setup-*.exe`，双击后按向导完成安装即可。安装程序只安装启动器本身，Codex 账户配置仍保存在本机 `%LOCALAPPDATA%\CodexProfileLauncher`，不会上传到云端。
 
 ## 使用方法
 
@@ -69,6 +85,8 @@ python -m unittest discover -s tests -v
 ```text
 app.py                 程序入口
 build_exe.ps1          Windows EXE 构建脚本
+build_release.ps1      EXE 与 Windows 安装包构建脚本
+installer.iss          Inno Setup 安装包配置
 launcher/              界面、账户模型、业务服务、存储和 Codex 启动逻辑
 tests/                 契约测试
 DEVELOPMENT_LOG.md     开发和验证日志

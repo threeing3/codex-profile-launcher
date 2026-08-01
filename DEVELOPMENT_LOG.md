@@ -4,7 +4,14 @@
 
 - Removed obsolete design references, generated build environments, intermediate build folders, and Python cache directories.
 - Kept the current source tree, tests, build script, documentation, and the locally generated one-folder EXE.
-- Added a project-level MIT license and a public-facing bilingual-friendly README focused on local account isolation and safe boundaries.
+- Added a project-level MIT license and a public-facing Chinese README focused on local account isolation and safe boundaries.
+
+## 2026-08-02 — Windows installer release build
+
+- Installed Inno Setup 6.7.3 locally and added `installer.iss` plus `build_release.ps1`.
+- The release script now builds the one-folder EXE first, checks build exit codes, and then creates `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`.
+- The installer is per-user by default, creates an optional desktop shortcut, registers a Start-menu shortcut, and keeps account data under `%LOCALAPPDATA%\CodexProfileLauncher`.
+- First packaging attempt detected a running project EXE and correctly failed to replace its files; after stopping only that project process, the clean rebuild and Inno Setup compile completed successfully.
 
 ## 2026-08-02 — Sidebar overlap fix
 
@@ -31,6 +38,7 @@
 python -m compileall -q launcher tests
 python -m unittest discover -s tests -v
 .\build_exe.ps1
+.\build_release.ps1
 ```
 
-The current test suite contains 12 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, and browser settings. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\` and is ignored by Git.
+The current test suite contains 12 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, and browser settings. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\`, and the installable release artifact is emitted under `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`; both are ignored by Git.

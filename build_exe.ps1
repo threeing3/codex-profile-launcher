@@ -10,6 +10,10 @@ if (-not (Test-Path -LiteralPath $python)) {
 }
 
 & $python -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot "requirements-build.txt")
+if ($LASTEXITCODE -ne 0) {
+    throw "Build dependency installation failed with exit code $LASTEXITCODE."
+}
+
 & $python -m PyInstaller `
     --noconfirm `
     --clean `
@@ -19,3 +23,6 @@ if (-not (Test-Path -LiteralPath $python)) {
     --workpath $build `
     --specpath $build `
     (Join-Path $PSScriptRoot "app.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed with exit code $LASTEXITCODE."
+}

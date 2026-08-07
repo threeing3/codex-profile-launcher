@@ -1,5 +1,14 @@
 # Development log
 
+## 2026-08-07 — Shared user skills
+
+- Added a central user-skill library under `%LOCALAPPDATA%\CodexProfileLauncher\shared-skills` while keeping each account's `.system` skills, plugin state, login data, chats, and projects isolated.
+- Added a preview-first migration flow that scans every profile, deduplicates identical skills, requires an explicit source choice for content conflicts, and warns about likely credentials.
+- Added per-skill Windows directory junctions, operation staging, pre-change backups, filesystem rollback, readable operation logs, persistent policies and bindings, and permanent skill snapshots.
+- Added account-level and per-skill detach operations that preserve independent copies, launch-time broken-link validation, snapshot restoration, external-change snapshots, and automatic recovery from unexpected shared-skill deletion.
+- Added the dedicated “共享技能” management window and account status summaries. Real profile migration remains gated behind the UI preview and confirmation step.
+- Added eleven skill-sharing contract tests. The complete suite now contains 23 passing tests, including real Windows junction behavior, failure rollback, and global removal in temporary directories.
+
 ## 2026-08-02 — Open-source cleanup
 
 - Removed obsolete design references, generated build environments, intermediate build folders, and Python cache directories.

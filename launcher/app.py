@@ -7,13 +7,22 @@ from .codex_app import CodexLauncher
 from .paths import AppPaths
 from .repository import ProfileRepository
 from .service import ProfileService
+from .skill_repository import SkillRepository
+from .skill_service import SkillService
 from .ui import LauncherWindow
 
 
 def run() -> None:
     _enable_windows_dpi_awareness()
     paths = AppPaths.default()
-    service = ProfileService(paths, ProfileRepository(paths.database), CodexLauncher())
+    launcher = CodexLauncher()
+    skill_service = SkillService(paths, SkillRepository(paths.database), launcher)
+    service = ProfileService(
+        paths,
+        ProfileRepository(paths.database),
+        launcher,
+        skill_service,
+    )
     service.initialize()
 
     root = tk.Tk()

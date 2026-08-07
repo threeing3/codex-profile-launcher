@@ -10,6 +10,7 @@ from typing import Callable
 from .codex_app import CodexAppNotFound
 from .models import Profile, ProfileKind
 from .service import ProfileService
+from .skill_ui import SkillManagerDialog
 
 
 FONT_FAMILY = "Microsoft YaHei UI"
@@ -287,6 +288,12 @@ class LauncherWindow:
         ttk.Button(list_actions, text="移除", width=4, style="Secondary.TButton", command=self._remove_selected).grid(
             row=0, column=1, padx=(8, 0)
         )
+        ttk.Button(
+            list_actions,
+            text="共享技能",
+            style="Secondary.TButton",
+            command=self._open_skill_manager,
+        ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         self.sidebar_hint = ttk.Label(
             sidebar,
             text="双击启动    ·    Enter 启动    ·    Ctrl F 搜索",
@@ -519,6 +526,16 @@ class LauncherWindow:
             ("配置目录", str(profile.codex_home) if not profile.is_system_default else "本机默认 .codex"),
             ("桌面数据", str(profile.user_data_dir) if not profile.is_system_default else "由系统 Codex 管理"),
         ]
+        if self.service.skill_service:
+            enabled, binding_count, issue_count = self.service.skill_service.status_for_profile(profile)
+            skill_status = (
+                f"已开启 · {binding_count} 个共享技能"
+                if enabled
+                else "已关闭 · 使用账户独立副本"
+            )
+            if issue_count:
+                skill_status += f" · {issue_count} 个异常"
+            rows.append(("共享技能", skill_status))
         for index, (label, value) in enumerate(rows):
             tk.Label(
                 details,
@@ -588,6 +605,13 @@ class LauncherWindow:
         ttk.Button(actions, text="打开配置目录", style="Secondary.TButton", command=self._open_selected).pack(
             side="left"
         )
+        if self.service.skill_service:
+            ttk.Button(
+                actions,
+                text="管理共享技能",
+                style="Secondary.TButton",
+                command=self._open_skill_manager,
+            ).pack(side="left", padx=(10, 0))
         if not profile.is_system_default:
             ttk.Button(actions, text="编辑配置", style="Secondary.TButton", command=self._edit_selected).pack(
                 side="left", padx=(10, 0)
@@ -793,6 +817,12 @@ class LauncherWindow:
             self.service.open_default_apps_settings()
         except OSError as error:
             messagebox.showerror("无法打开 Windows 设置", str(error), parent=self.root)
+
+    def _open_skill_manager(self) -> None:
+        if not self.service.skill_service:
+            messagebox.showwarning("功能不可用", "共享技能服务尚未初始化。", parent=self.root)
+            return
+        SkillManagerDialog(self.root, self.service.skill_service, self.profiles)
 
     def _remove_selected(self) -> None:
         profile = self.selected_profile

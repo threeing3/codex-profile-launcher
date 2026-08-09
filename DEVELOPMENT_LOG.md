@@ -1,5 +1,13 @@
 # Development log
 
+## 2026-08-09 — Shared-skill workflow and sidebar clarity
+
+- Reworked the account sidebar so compact windows keep the account list visible: account creation and skill-library entry now live in the title toolbar, nonessential labels collapse at low height, and the sidebar list expands to the full available width.
+- Replaced the single dense shared-skill screen with three task-focused tabs: migration guidance, account and per-skill controls, and recovery/maintenance.
+- Added a three-step migration guide, explicit next-action text, highlighted unresolved conflicts, contextual button labels, and disabled actions until their required selections exist.
+- Corrected empty-library and already-synchronized states so the interface says “等待首次迁移” or “共享库已是最新” instead of implying that sharing is active.
+- Verified the compact main window at 820×600, the conflict-selection state transition, Python compilation, and all 23 contract tests.
+
 ## 2026-08-07 — Shared user skills
 
 - Added a central user-skill library under `%LOCALAPPDATA%\CodexProfileLauncher\shared-skills` while keeping each account's `.system` skills, plugin state, login data, chats, and projects isolated.

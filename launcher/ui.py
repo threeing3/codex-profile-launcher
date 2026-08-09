@@ -163,6 +163,16 @@ class LauncherWindow:
             bordercolor=[("focus", COLORS["focus"])],
         )
         style.configure(
+            "SidebarAction.TButton",
+            background=COLORS["surface"],
+            foreground=COLORS["text"],
+            bordercolor=COLORS["line"],
+            borderwidth=1,
+            padding=(8, 6),
+            font=(FONT_FAMILY, 8),
+        )
+        style.map("SidebarAction.TButton", background=[("active", COLORS["hover"])])
+        style.configure(
             "Danger.TButton",
             background=COLORS["surface"],
             foreground=COLORS["danger"],
@@ -227,7 +237,8 @@ class LauncherWindow:
         self.sidebar = sidebar
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
-        sidebar.grid_rowconfigure(4, weight=1)
+        sidebar.grid_columnconfigure(0, weight=1)
+        sidebar.grid_rowconfigure(3, weight=1)
 
         brand = ttk.Frame(sidebar, style="Sidebar.TFrame")
         brand.grid(row=0, column=0, sticky="ew", padx=18, pady=(20, 18))
@@ -238,6 +249,20 @@ class LauncherWindow:
             style="Sidebar.TLabel",
             font=(FONT_FAMILY, 15, "bold"),
         ).grid(row=0, column=0, sticky="w")
+        ttk.Button(
+            brand,
+            text="新建",
+            width=5,
+            style="SidebarAction.TButton",
+            command=self._new_profile,
+        ).grid(row=0, column=1, rowspan=2, sticky="e", padx=(10, 0))
+        ttk.Button(
+            brand,
+            text="技能库",
+            width=6,
+            style="SidebarAction.TButton",
+            command=self._open_skill_manager,
+        ).grid(row=0, column=2, rowspan=2, sticky="e", padx=(8, 0))
         ttk.Label(
             brand,
             text="选择一个账户以继续",
@@ -247,6 +272,7 @@ class LauncherWindow:
         ).grid(row=1, column=0, sticky="w", pady=(3, 0))
 
         search_frame = tk.Frame(sidebar, bg=COLORS["sidebar"])
+        self.search_frame = search_frame
         search_frame.grid(row=1, column=0, sticky="ew", padx=16)
         search_frame.grid_columnconfigure(0, weight=1)
         tk.Label(
@@ -261,7 +287,13 @@ class LauncherWindow:
         self.search_entry.grid(row=1, column=0, sticky="ew")
         self.search_var.trace_add("write", lambda *_: self._render_profile_list())
 
-        ttk.Label(sidebar, text="已保存的账户", style="Sidebar.TLabel", foreground=COLORS["sidebar_muted"]).grid(
+        self.saved_accounts_label = ttk.Label(
+            sidebar,
+            text="已保存的账户",
+            style="Sidebar.TLabel",
+            foreground=COLORS["sidebar_muted"],
+        )
+        self.saved_accounts_label.grid(
             row=2, column=0, sticky="w", padx=18, pady=(18, 8)
         )
 
@@ -271,7 +303,7 @@ class LauncherWindow:
             selectmode="browse",
             style="Profile.Treeview",
         )
-        self.profile_tree.grid(row=4, column=0, sticky="nsew", padx=12)
+        self.profile_tree.grid(row=3, column=0, sticky="nsew", padx=12)
         self.profile_tree.bind("<<TreeviewSelect>>", self._on_profile_selected)
         self.profile_tree.bind("<Double-1>", lambda _event: self._launch_selected())
         self.profile_tree.bind("<Return>", lambda _event: self._launch_selected())
@@ -279,21 +311,6 @@ class LauncherWindow:
         self.profile_tree.bind("<Leave>", self._on_profile_leave)
         self.profile_tree.tag_configure("hover", background=COLORS["hover"], foreground=COLORS["text"])
 
-        list_actions = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        list_actions.grid(row=5, column=0, sticky="ew", padx=16, pady=(14, 8))
-        list_actions.grid_columnconfigure(0, weight=1)
-        ttk.Button(list_actions, text="新建账户", width=8, style="Secondary.TButton", command=self._new_profile).grid(
-            row=0, column=0, sticky="ew"
-        )
-        ttk.Button(list_actions, text="移除", width=4, style="Secondary.TButton", command=self._remove_selected).grid(
-            row=0, column=1, padx=(8, 0)
-        )
-        ttk.Button(
-            list_actions,
-            text="共享技能",
-            style="Secondary.TButton",
-            command=self._open_skill_manager,
-        ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         self.sidebar_hint = ttk.Label(
             sidebar,
             text="双击启动    ·    Enter 启动    ·    Ctrl F 搜索",
@@ -301,7 +318,7 @@ class LauncherWindow:
             foreground=COLORS["sidebar_muted"],
             font=(FONT_FAMILY, 8),
         )
-        self.sidebar_hint.grid(row=6, column=0, sticky="w", padx=18, pady=(0, 16))
+        self.sidebar_hint.grid(row=4, column=0, sticky="w", padx=18, pady=(10, 14))
 
         main = ttk.Frame(self.root, style="Panel.TFrame")
         self.main = main
@@ -368,13 +385,20 @@ class LauncherWindow:
             self._set_layout_mode(compact)
         if compact:
             sidebar_width, horizontal_pad = max(1, width), 18
+            self.sidebar.configure(height=max(230, min(300, int(height * 0.45))))
+            self.saved_accounts_label.grid_remove()
+            self.sidebar_hint.grid_remove()
         elif width < 1040:
             sidebar_width, horizontal_pad = 258, 28
+            self.sidebar.configure(height=1)
+            self.saved_accounts_label.grid()
         else:
             sidebar_width, horizontal_pad = 292, 44
+            self.sidebar.configure(height=1)
+            self.saved_accounts_label.grid()
         self.sidebar.configure(width=sidebar_width)
         vertical_pad = 22 if height < 640 else 30
-        if height < 760:
+        if compact or height < 760:
             self.sidebar_hint.grid_remove()
         else:
             self.sidebar_hint.grid()
@@ -442,7 +466,7 @@ class LauncherWindow:
             self.root.grid_columnconfigure(1, weight=0)
             self.root.grid_rowconfigure(0, weight=0)
             self.root.grid_rowconfigure(1, weight=1)
-            self.sidebar.configure(width=1, height=210)
+            self.sidebar.configure(width=1, height=260)
             self.sidebar.grid_configure(row=0, column=0, columnspan=2, sticky="ew")
             self.main.grid_configure(row=1, column=0, columnspan=2, sticky="nsew", padx=0)
         else:

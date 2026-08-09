@@ -8,6 +8,15 @@
 - Corrected empty-library and already-synchronized states so the interface says “等待首次迁移” or “共享库已是最新” instead of implying that sharing is active.
 - Verified the compact main window at 820×600, the conflict-selection state transition, Python compilation, and all 23 contract tests.
 
+## 2026-08-09 — Windows application icon and formal rebuild
+
+- Generated an original multi-profile application icon and converted it into a multi-resolution Windows ICO containing sizes from 16×16 through 256×256.
+- Added a stable Windows AppUserModelID, applied the icon to the Tk root window, embedded the icon into `CodexProfiles.exe`, and bundled the runtime ICO alongside the executable.
+- Made the build output and work directories configurable so a candidate can be built and verified without touching the currently running formal program.
+- Ran all 23 contract tests, produced an isolated staging build, extracted the associated icon back from the generated EXE, and verified that the staging window started and closed normally with exit code 0.
+- Preserved the previous formal program at `%LOCALAPPDATA%\CodexProfileLauncher\release-backups\CodexProfiles-20260809-112848`, moved the verified candidate into `dist-v0.10\CodexProfiles`, and confirmed that the formal window exposes both large and small Windows class icons.
+- Stored the readable test, packaging, staging-launch, and replacement transcript at `build-logs\formal-rebuild-20260809-112658.log` (ignored by Git as a local build artifact).
+
 ## 2026-08-07 — Shared user skills
 
 - Added a central user-skill library under `%LOCALAPPDATA%\CodexProfileLauncher\shared-skills` while keeping each account's `.system` skills, plugin state, login data, chats, and projects isolated.
@@ -58,4 +67,4 @@ python -m unittest discover -s tests -v
 .\build_release.ps1
 ```
 
-The current test suite contains 12 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, and browser settings. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\`, and the installable release artifact is emitted under `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`; both are ignored by Git.
+The current test suite contains 23 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, browser settings, and shared-skill migration safety. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\`, and the installable release artifact is emitted under `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`; both are ignored by Git.

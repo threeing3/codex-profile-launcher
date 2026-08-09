@@ -14,6 +14,9 @@ from .skill_ui import SkillManagerDialog
 
 
 FONT_FAMILY = "Microsoft YaHei UI"
+DEFAULT_WINDOW_WIDTH = 1180
+DEFAULT_WINDOW_HEIGHT = 900
+DEFAULT_SIDEBAR_WIDTH = 316
 
 
 COLORS = {
@@ -59,6 +62,7 @@ class LauncherWindow:
         self.profile_status_var = tk.StringVar(value="未启动")
         self._running_profile_ids: frozenset[str] = frozenset()
         self._toast: tk.Label | None = None
+        self._content_scrollbar_sync_job: str | None = None
         self.launch_button: tk.Button | None = None
         self._launch_button_text = ""
         self._detail_value_labels: list[tk.Label] = []
@@ -79,7 +83,13 @@ class LauncherWindow:
     def _configure_root(self) -> None:
         title = os.environ.get("CODEX_PROFILE_LAUNCHER_TITLE", "Codex Profiles")
         self.root.title(title)
-        self.root.geometry("1040x680")
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = max(640, min(DEFAULT_WINDOW_WIDTH, screen_width - 80))
+        window_height = max(520, min(DEFAULT_WINDOW_HEIGHT, screen_height - 96))
+        window_x = max(0, (screen_width - window_width) // 2)
+        window_y = max(0, (screen_height - window_height) // 2)
+        self.root.geometry(f"{window_width}x{window_height}+{window_x}+{window_y}")
         # Keep enough room for the stacked narrow layout on high-DPI Windows displays.
         self.root.minsize(640, 520)
         self.root.configure(bg=COLORS["window"])
@@ -233,7 +243,7 @@ class LauncherWindow:
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
-        sidebar = ttk.Frame(self.root, style="Sidebar.TFrame", width=292)
+        sidebar = ttk.Frame(self.root, style="Sidebar.TFrame", width=DEFAULT_SIDEBAR_WIDTH)
         self.sidebar = sidebar
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
@@ -241,7 +251,8 @@ class LauncherWindow:
         sidebar.grid_rowconfigure(3, weight=1)
 
         brand = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        brand.grid(row=0, column=0, sticky="ew", padx=18, pady=(20, 18))
+        self.brand = brand
+        brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 16))
         brand.grid_columnconfigure(0, weight=1)
         ttk.Label(
             brand,
@@ -249,20 +260,6 @@ class LauncherWindow:
             style="Sidebar.TLabel",
             font=(FONT_FAMILY, 15, "bold"),
         ).grid(row=0, column=0, sticky="w")
-        ttk.Button(
-            brand,
-            text="新建",
-            width=5,
-            style="SidebarAction.TButton",
-            command=self._new_profile,
-        ).grid(row=0, column=1, rowspan=2, sticky="e", padx=(10, 0))
-        ttk.Button(
-            brand,
-            text="技能库",
-            width=6,
-            style="SidebarAction.TButton",
-            command=self._open_skill_manager,
-        ).grid(row=0, column=2, rowspan=2, sticky="e", padx=(8, 0))
         ttk.Label(
             brand,
             text="选择一个账户以继续",
@@ -311,14 +308,32 @@ class LauncherWindow:
         self.profile_tree.bind("<Leave>", self._on_profile_leave)
         self.profile_tree.tag_configure("hover", background=COLORS["hover"], foreground=COLORS["text"])
 
+        sidebar_actions = ttk.Frame(sidebar, style="Sidebar.TFrame")
+        self.sidebar_actions = sidebar_actions
+        sidebar_actions.grid(row=4, column=0, sticky="ew", padx=16, pady=(12, 0))
+        sidebar_actions.grid_columnconfigure(0, weight=1)
+        sidebar_actions.grid_columnconfigure(1, weight=1)
+        ttk.Button(
+            sidebar_actions,
+            text="＋ 新建账户",
+            style="SidebarAction.TButton",
+            command=self._new_profile,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        ttk.Button(
+            sidebar_actions,
+            text="共享技能库",
+            style="SidebarAction.TButton",
+            command=self._open_skill_manager,
+        ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
+
         self.sidebar_hint = ttk.Label(
             sidebar,
-            text="双击启动    ·    Enter 启动    ·    Ctrl F 搜索",
+            text="双击或 Enter 启动  ·  Ctrl F 搜索",
             style="Sidebar.TLabel",
             foreground=COLORS["sidebar_muted"],
             font=(FONT_FAMILY, 8),
         )
-        self.sidebar_hint.grid(row=4, column=0, sticky="w", padx=18, pady=(10, 14))
+        self.sidebar_hint.grid(row=5, column=0, sticky="w", padx=18, pady=(10, 14))
 
         main = ttk.Frame(self.root, style="Panel.TFrame")
         self.main = main
@@ -328,7 +343,7 @@ class LauncherWindow:
 
         header = ttk.Frame(main, style="Panel.TFrame")
         self.header = header
-        header.grid(row=0, column=0, sticky="ew", padx=44, pady=(30, 0))
+        header.grid(row=0, column=0, sticky="ew", padx=36, pady=(26, 0))
         header.grid_columnconfigure(0, weight=1)
         ttk.Label(header, text="账户", style="Toolbar.TLabel").grid(
             row=0, column=0, sticky="w"
@@ -352,10 +367,13 @@ class LauncherWindow:
         content_view.grid_columnconfigure(0, weight=1)
         self.content_canvas = tk.Canvas(content_view, bg=COLORS["panel"], highlightthickness=0, bd=0)
         scrollbar = ttk.Scrollbar(content_view, orient="vertical", command=self.content_canvas.yview)
+        self.content_scrollbar = scrollbar
+        self._content_scrollbar_visible = False
         self.content_canvas.configure(yscrollcommand=scrollbar.set)
         self.content_canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
-        self.content = ttk.Frame(self.content_canvas, style="Panel.TFrame", padding=(44, 30, 44, 38))
+        scrollbar.grid_remove()
+        self.content = ttk.Frame(self.content_canvas, style="Panel.TFrame", padding=(36, 24, 36, 28))
         content_window = self.content_canvas.create_window((0, 0), window=self.content, anchor="nw")
         self.content_canvas.bind(
             "<Configure>",
@@ -363,7 +381,7 @@ class LauncherWindow:
         )
         self.content.bind(
             "<Configure>",
-            lambda _event: self.content_canvas.configure(scrollregion=self.content_canvas.bbox("all")),
+            lambda _event: self._update_content_scrollbar(),
         )
         self.content_canvas.bind("<Enter>", lambda _event: self.root.bind_all("<MouseWheel>", self._on_content_wheel))
         self.content_canvas.bind("<Leave>", lambda _event: self.root.unbind_all("<MouseWheel>"))
@@ -371,6 +389,27 @@ class LauncherWindow:
         self.content.grid_rowconfigure(7, weight=1)
         self._show_empty_state()
         self.root.bind("<Configure>", self._on_window_resize, add="+")
+
+    def _update_content_scrollbar(self) -> None:
+        bounds = self.content_canvas.bbox("all")
+        if bounds:
+            self.content_canvas.configure(scrollregion=bounds)
+        if self._content_scrollbar_sync_job is not None:
+            self.root.after_cancel(self._content_scrollbar_sync_job)
+        self._content_scrollbar_sync_job = self.root.after(80, self._sync_content_scrollbar_visibility)
+
+    def _sync_content_scrollbar_visibility(self) -> None:
+        self._content_scrollbar_sync_job = None
+        if not self.content_canvas.winfo_exists():
+            return
+        first, last = self.content_canvas.yview()
+        needs_scrollbar = first > 0.001 or last < 0.999
+        if needs_scrollbar and not self._content_scrollbar_visible:
+            self.content_scrollbar.grid()
+            self._content_scrollbar_visible = True
+        elif not needs_scrollbar and self._content_scrollbar_visible:
+            self.content_scrollbar.grid_remove()
+            self._content_scrollbar_visible = False
 
     def _on_window_resize(self, event: tk.Event) -> None:
         if event.widget is not self.root:
@@ -385,20 +424,23 @@ class LauncherWindow:
             self._set_layout_mode(compact)
         if compact:
             sidebar_width, horizontal_pad = max(1, width), 18
-            self.sidebar.configure(height=max(230, min(300, int(height * 0.45))))
+            self.sidebar.configure(height=max(260, min(330, int(height * 0.43))))
+            self.brand.grid_configure(pady=(14, 10))
             self.saved_accounts_label.grid_remove()
             self.sidebar_hint.grid_remove()
-        elif width < 1040:
-            sidebar_width, horizontal_pad = 258, 28
+        elif width < 1120:
+            sidebar_width, horizontal_pad = 292, 28
             self.sidebar.configure(height=1)
+            self.brand.grid_configure(pady=(20, 16))
             self.saved_accounts_label.grid()
         else:
-            sidebar_width, horizontal_pad = 292, 44
+            sidebar_width, horizontal_pad = DEFAULT_SIDEBAR_WIDTH, 36
             self.sidebar.configure(height=1)
+            self.brand.grid_configure(pady=(20, 16))
             self.saved_accounts_label.grid()
         self.sidebar.configure(width=sidebar_width)
-        vertical_pad = 22 if height < 640 else 30
-        if compact or height < 760:
+        vertical_pad = 18 if height < 680 else 24
+        if compact or height < 720:
             self.sidebar_hint.grid_remove()
         else:
             self.sidebar_hint.grid()
@@ -415,6 +457,7 @@ class LauncherWindow:
         for label in self._detail_value_labels:
             if label.winfo_exists():
                 label.configure(wraplength=wraplength)
+        self._update_content_scrollbar()
 
     def _window_pixel_width(self, fallback: int) -> int:
         if os.name != "nt":
@@ -474,7 +517,7 @@ class LauncherWindow:
             self.root.grid_columnconfigure(1, weight=1)
             self.root.grid_rowconfigure(0, weight=1)
             self.root.grid_rowconfigure(1, weight=0)
-            self.sidebar.configure(width=292, height=1)
+            self.sidebar.configure(width=DEFAULT_SIDEBAR_WIDTH, height=1)
             self.sidebar.grid_configure(row=0, column=0, columnspan=1, sticky="nsew")
             self.main.grid_configure(row=0, column=1, columnspan=1, sticky="nsew", padx=(1, 0))
 
@@ -569,7 +612,7 @@ class LauncherWindow:
                 font=(FONT_FAMILY, 9),
                 anchor="w",
                 width=11,
-            ).grid(row=index, column=0, sticky="nw", padx=(16, 10), pady=(9, 6))
+            ).grid(row=index, column=0, sticky="nw", padx=(16, 10), pady=(7, 5))
             value_label = tk.Label(
                 details,
                 text=value,
@@ -580,7 +623,7 @@ class LauncherWindow:
                 justify="left",
                 wraplength=560,
             )
-            value_label.grid(row=index, column=1, sticky="ew", padx=(0, 16), pady=(9, 6))
+            value_label.grid(row=index, column=1, sticky="ew", padx=(0, 16), pady=(7, 5))
             self._detail_value_labels.append(value_label)
             if index < len(rows) - 1:
                 tk.Frame(details, height=1, bg="#E5E5EA").grid(
@@ -592,6 +635,12 @@ class LauncherWindow:
                 )
 
         launch_text = "打开默认 Codex" if profile.is_system_default else "启动新 Codex 窗口"
+        launch_heading = "打开本机默认窗口" if profile.is_system_default else "启动隔离窗口"
+        launch_description = (
+            "继续使用原有账号、项目与聊天记录"
+            if profile.is_system_default
+            else "使用此账户的独立登录和桌面状态"
+        )
         self._launch_button_text = launch_text
         launch_card = tk.Frame(
             self.content,
@@ -604,7 +653,7 @@ class LauncherWindow:
         launch_card.grid_columnconfigure(0, weight=1)
         tk.Label(
             launch_card,
-            text="启动隔离窗口",
+            text=launch_heading,
             bg=COLORS["launch_surface"],
             fg=COLORS["text"],
             font=(FONT_FAMILY, 11, "bold"),
@@ -612,7 +661,7 @@ class LauncherWindow:
         ).grid(row=0, column=0, sticky="w", padx=(18, 12), pady=(15, 2))
         tk.Label(
             launch_card,
-            text="使用此账户的独立登录和桌面状态",
+            text=launch_description,
             bg=COLORS["launch_surface"],
             fg=COLORS["muted"],
             font=(FONT_FAMILY, 9),
@@ -729,9 +778,14 @@ class LauncherWindow:
             haystack = f"{profile.name} {profile.subtitle}".lower()
             if query and query not in haystack:
                 continue
-            state = "默认" if profile.is_system_default else (
-                "运行中" if self.service.launcher.is_running(profile.id) else profile.subtitle
-            )
+            if profile.is_system_default:
+                state = "默认"
+            elif self.service.launcher.is_running(profile.id):
+                state = "运行中"
+            elif profile.kind is ProfileKind.ACCOUNT:
+                state = "ChatGPT"
+            else:
+                state = profile.provider_name or "自定义"
             self.profile_tree.insert("", "end", iid=profile.id, text=f"  {profile.name}  ·  {state}", tags=())
         if current and self.profile_tree.exists(current):
             self.profile_tree.selection_set(current)

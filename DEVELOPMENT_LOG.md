@@ -17,6 +17,17 @@
 - Preserved the previous formal program at `%LOCALAPPDATA%\CodexProfileLauncher\release-backups\CodexProfiles-20260809-112848`, moved the verified candidate into `dist-v0.10\CodexProfiles`, and confirmed that the formal window exposes both large and small Windows class icons.
 - Stored the readable test, packaging, staging-launch, and replacement transcript at `build-logs\formal-rebuild-20260809-112658.log` (ignored by Git as a local build artifact).
 
+## 2026-08-09 — High-DPI sidebar correction and transparent icon
+
+- Reproduced the remaining default-window failure from the user screenshot: at approximately 200% Tk scaling, the sidebar title competed with two toolbar buttons, the account summary text was clipped, and the 680-pixel client height left only about 653 pixels for 779 pixels of detail content.
+- Rebuilt the sidebar as five independent regions—brand, search, saved-account label, expanding account list, and bottom actions—so buttons no longer alter the title or list width. Short account-state labels keep both current rows fully visible.
+- Changed the default window to a screen-bounded, centered 1180×900 layout. The content scrollbar now appears only when required, while the existing stacked compact mode remains available for smaller screens.
+- Corrected the system-default launch card wording and kept the full details table, action buttons, and explanatory note visible together at the detected 200% scaling.
+- Replaced the dark square icon with a bright blue/yellow/coral multi-profile mark. The built-in image generator produced a flat chroma-key source; the image skill's removal helper generated the final RGBA PNG, which was cropped, padded, and converted into a 16–256 pixel multi-resolution ICO.
+- Verified transparent corners in the final PNG, bundled ICO, and the 32×32 icon extracted back from the packaged EXE. The extracted EXE icon contains 336 fully transparent pixels and all four corner alpha values are zero.
+- Passed Python compilation, all 23 contract tests, real default and 820×600 compact geometry probes, source screenshots, a clean staging package launch, and packaged large/small window-icon checks.
+- Preserved the prior formal program at `%LOCALAPPDATA%\CodexProfileLauncher\release-backups\CodexProfiles-20260809-114601`, replaced the formal directory, and left the verified new program running. The readable experiment transcript is `build-logs\ui-rework-20260809-113829.log`.
+
 ## 2026-08-07 — Shared user skills
 
 - Added a central user-skill library under `%LOCALAPPDATA%\CodexProfileLauncher\shared-skills` while keeping each account's `.system` skills, plugin state, login data, chats, and projects isolated.

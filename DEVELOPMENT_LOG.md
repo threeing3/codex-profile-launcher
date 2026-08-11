@@ -69,6 +69,17 @@
 - Applied the Apple-inspired visual direction only to the content area: light neutral palette, grouped cards, system-blue primary action, and consistent typography.
 - Reverted the borderless custom title-bar experiment because it made native Windows window management and automation less reliable.
 
+## 2026-08-11 — Project index recovery guard
+
+- Reproduced the recurring isolated-account failure: the Codex desktop window kept its `state_5.sqlite` conversations, while `.codex-global-state.json` and its `.bak` copy were both reduced to an empty `local-projects` map.
+- Added `launcher/project_state.py` with a per-profile lock, readable recovery log, timestamped pre-repair backups, and a project-state snapshot stored outside the Codex state files.
+- `CodexLauncher` now validates and snapshots project metadata before launching an isolated profile. If both state copies are empty or divergent, only the known project-related fields are restored from the last validated snapshot; ordinary chats are never guessed into a project.
+- Writes are atomic and applied to both the primary and backup state files. A malformed or missing backup is repaired from the valid copy.
+- The system-default `.codex` profile uses the same guard, so the default window is protected as well as isolated profiles. Launching a profile that is already detected as running is rejected instead of creating a duplicate process.
+- The launcher now snapshots valid project state when its own window closes, skips all state writes while a matching ChatGPT process is alive, and performs repair during startup before any new Codex process is launched. This closes the launcher-restart race instead of relying only on a later manual recovery.
+- Added four contract tests covering snapshot/restore, backup repair, no-snapshot safety, and duplicate-window prevention. The full suite now contains 27 passing tests.
+- Test log: `build-logs/project-state-guard-20260811-final.log`.
+
 ## Verification
 
 ```powershell
@@ -78,4 +89,4 @@ python -m unittest discover -s tests -v
 .\build_release.ps1
 ```
 
-The current test suite contains 23 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, browser settings, and shared-skill migration safety. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\`, and the installable release artifact is emitted under `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`; both are ignored by Git.
+The current test suite contains 27 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, browser settings, shared-skill migration safety, and project-state recovery. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\`, and the installable release artifact is emitted under `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`; both are ignored by Git.

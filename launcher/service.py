@@ -32,6 +32,8 @@ class ProfileService:
         self.repository.initialize()
         if self.skill_service:
             self.skill_service.initialize()
+        for profile in self.list_profiles():
+            self.launcher.prepare_profile_state(profile)
 
     def list_profiles(self) -> list[Profile]:
         return [Profile.system_default(), *self.repository.list()]

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .models import Profile
+from .project_state import ProjectStateGuard
 
 
 CREATE_NO_WINDOW = 0x08000000
@@ -56,8 +57,13 @@ class RunningProfile:
 
 
 class CodexLauncher:
-    def __init__(self, locator: CodexAppLocator | None = None) -> None:
+    def __init__(
+        self,
+        locator: CodexAppLocator | None = None,
+        state_guard: ProjectStateGuard | None = None,
+    ) -> None:
         self.locator = locator or CodexAppLocator()
+        self.state_guard = state_guard or ProjectStateGuard()
         self._running: dict[str, RunningProfile] = {}
 
     def launch(self, profile: Profile) -> RunningProfile:
@@ -68,6 +74,12 @@ class CodexLauncher:
         if current and current.is_running:
             return current
 
+        if self.is_profile_process_running(profile):
+            raise RuntimeError(
+                f"配置“{profile.name}”的 Codex 窗口已经在运行，请先切换到现有窗口。"
+            )
+
+        self.prepare_profile_state(profile)
         profile.codex_home.mkdir(parents=True, exist_ok=True)
         profile.user_data_dir.mkdir(parents=True, exist_ok=True)
         executable = self.locator.locate()
@@ -90,6 +102,13 @@ class CodexLauncher:
         self,
         profile_id: str = "__system_default__",
     ) -> RunningProfile:
+        profile = Profile.system_default()
+        current = self._running.get(profile_id)
+        if current and current.is_running:
+            return current
+        if self.is_profile_process_running(profile):
+            raise RuntimeError("系统默认 Codex 窗口已经在运行，请先切换到现有窗口。")
+        self.prepare_profile_state(profile)
         executable = self.locator.locate()
         environment = os.environ.copy()
         environment.pop("CODEX_HOME", None)
@@ -116,6 +135,18 @@ class CodexLauncher:
 
     def is_profile_process_running(self, profile: Profile) -> bool:
         return bool(self._profile_process_ids(profile))
+
+    def prepare_profile_state(self, profile: Profile) -> bool:
+        """Repair only when no matching Codex process can still write the state."""
+
+        if self.is_profile_process_running(profile):
+            return False
+        return self.state_guard.prepare(profile)
+
+    def snapshot_profile_state(self, profile: Profile) -> bool:
+        """Save a read-only snapshot during launcher shutdown."""
+
+        return self.state_guard.snapshot_if_valid(profile)
 
     def request_close_profile(self, profile: Profile) -> bool:
         process_ids = self._profile_process_ids(profile)

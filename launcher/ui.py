@@ -69,6 +69,7 @@ class LauncherWindow:
         self._compact_layout = False
 
         self._configure_root()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._configure_styles()
         self._build_layout()
         self.root.after_idle(self._style_native_window_frame)
@@ -79,6 +80,18 @@ class LauncherWindow:
         self.root.bind("<Control-n>", lambda _event: self._new_profile())
         self.root.bind("<Control-r>", lambda _event: self._detect_codex())
         self.root.bind("<Control-f>", lambda _event: self._focus_search())
+
+    def _on_close(self) -> None:
+        """Snapshot valid project state before the launcher itself exits."""
+
+        for profile in self.profiles:
+            try:
+                self.service.launcher.snapshot_profile_state(profile)
+            except OSError:
+                # Closing the launcher must remain possible even if a profile
+                # state file is temporarily locked by the Codex app.
+                continue
+        self.root.destroy()
 
     def _configure_root(self) -> None:
         title = os.environ.get("CODEX_PROFILE_LAUNCHER_TITLE", "Codex Profiles")

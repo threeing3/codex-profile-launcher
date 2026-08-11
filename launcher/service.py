@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .codex_app import CodexLauncher
 from .models import Profile, ProfileKind
 from .paths import AppPaths
 from .provider_config import initialize_provider_config, sync_provider_config
 from .repository import ProfileRepository
+
+if TYPE_CHECKING:
+    from .skill_service import SkillService
 
 
 class ProfileService:
@@ -16,14 +20,20 @@ class ProfileService:
         paths: AppPaths,
         repository: ProfileRepository,
         launcher: CodexLauncher,
+        skill_service: "SkillService | None" = None,
     ) -> None:
         self.paths = paths
         self.repository = repository
         self.launcher = launcher
+        self.skill_service = skill_service
 
     def initialize(self) -> None:
         self.paths.ensure()
         self.repository.initialize()
+        if self.skill_service:
+            self.skill_service.initialize()
+        for profile in self.list_profiles():
+            self.launcher.prepare_profile_state(profile)
 
     def list_profiles(self) -> list[Profile]:
         return [Profile.system_default(), *self.repository.list()]
@@ -52,6 +62,8 @@ class ProfileService:
         profile.user_data_dir.mkdir(parents=True, exist_ok=True)
         initialize_provider_config(profile)
         self.repository.save(profile)
+        if self.skill_service:
+            self.skill_service.enroll_profile(profile)
         return profile
 
     def update_profile(
@@ -80,6 +92,12 @@ class ProfileService:
         return updated
 
     def launch_profile(self, profile: Profile) -> int:
+        if self.skill_service:
+            issues = self.skill_service.validate_profile(profile)
+            if issues:
+                raise RuntimeError(
+                    "共享技能状态异常，已阻止启动：\n" + "\n".join(f"- {item}" for item in issues)
+                )
         return self.launcher.launch(profile).process.pid
 
     def remove_profile_record(self, profile: Profile) -> None:
@@ -87,6 +105,8 @@ class ProfileService:
             raise RuntimeError("系统默认 Codex 不能从启动器中移除。")
         if self.launcher.is_running(profile.id):
             raise RuntimeError("Close the Codex window before removing this Profile.")
+        if self.skill_service:
+            self.skill_service.detach_profile(profile)
         self.repository.remove_record(profile.id)
 
     @staticmethod

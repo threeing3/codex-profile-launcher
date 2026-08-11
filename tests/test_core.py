@@ -117,20 +117,23 @@ class LauncherContracts(unittest.TestCase):
     def test_default_launch_has_no_isolation_overrides(self) -> None:
         locator = Mock()
         locator.locate.return_value = Path("C:/Program Files/WindowsApps/OpenAI.Codex/app/ChatGPT.exe")
-        launcher = CodexLauncher(locator)
+        guard = Mock()
+        launcher = CodexLauncher(locator, guard)
         process = Mock()
         process.pid = 7
         process.poll.return_value = None
         profile = Profile.system_default()
 
         with patch.dict("launcher.codex_app.os.environ", {"CODEX_HOME": "C:/isolated"}, clear=False):
-            with patch("launcher.codex_app.subprocess.Popen", return_value=process) as popen:
-                launcher.launch(profile)
+            with patch.object(launcher, "_profile_process_ids", return_value=[]):
+                with patch("launcher.codex_app.subprocess.Popen", return_value=process) as popen:
+                    launcher.launch(profile)
 
         command = popen.call_args.args[0]
         environment = popen.call_args.kwargs["env"]
         self.assertEqual(len(command), 1)
         self.assertNotIn("CODEX_HOME", environment)
+        guard.prepare.assert_called_once_with(profile)
 
     def test_launch_sets_both_isolation_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -147,8 +150,9 @@ class LauncherContracts(unittest.TestCase):
             process.pid = 42
             process.poll.return_value = None
 
-            with patch("launcher.codex_app.subprocess.Popen", return_value=process) as popen:
-                running = launcher.launch(profile)
+            with patch.object(launcher, "_profile_process_ids", return_value=[]):
+                with patch("launcher.codex_app.subprocess.Popen", return_value=process) as popen:
+                    running = launcher.launch(profile)
 
             command = popen.call_args.args[0]
             environment = popen.call_args.kwargs["env"]

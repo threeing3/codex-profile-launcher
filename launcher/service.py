@@ -92,19 +92,32 @@ class ProfileService:
         return updated
 
     def launch_profile(self, profile: Profile) -> int:
+        self._validate_profile_launch(profile)
+        return self.launcher.launch(profile).process.pid
+
+    def close_profile(self, profile: Profile) -> None:
+        if not self.launcher.stop_profile(profile):
+            raise RuntimeError(
+                f"无法结束“{profile.name}”的 Codex 进程，请在任务管理器中检查后重试。"
+            )
+
+    def restart_profile(self, profile: Profile) -> int:
+        self._validate_profile_launch(profile)
+        return self.launcher.restart_profile(profile).process.pid
+
+    def _validate_profile_launch(self, profile: Profile) -> None:
         if self.skill_service:
             issues = self.skill_service.validate_profile(profile)
             if issues:
                 raise RuntimeError(
                     "共享技能状态异常，已阻止启动：\n" + "\n".join(f"- {item}" for item in issues)
                 )
-        return self.launcher.launch(profile).process.pid
 
     def remove_profile_record(self, profile: Profile) -> None:
         if profile.is_system_default:
             raise RuntimeError("系统默认 Codex 不能从启动器中移除。")
-        if self.launcher.is_running(profile.id):
-            raise RuntimeError("Close the Codex window before removing this Profile.")
+        if self.launcher.is_profile_process_running(profile):
+            raise RuntimeError("请先关闭此配置对应的 Codex 窗口或后台进程。")
         if self.skill_service:
             self.skill_service.detach_profile(profile)
         self.repository.remove_record(profile.id)

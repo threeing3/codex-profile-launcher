@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from launcher.codex_app import CodexLauncher
+from launcher.codex_app import CodexLauncher, RunningProfile
 from launcher.models import Profile, ProfileKind
 from launcher.paths import AppPaths
 from launcher.provider_config import initialize_provider_config, render_provider_config, sync_provider_config
@@ -160,6 +160,90 @@ class LauncherContracts(unittest.TestCase):
             self.assertIn(f"--user-data-dir={profile.user_data_dir}", command)
             self.assertEqual(environment["CODEX_HOME"], str(profile.codex_home))
 
+    def test_running_profile_scan_distinguishes_default_and_isolated_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            profile = Profile.create(
+                name="Work",
+                kind=ProfileKind.ACCOUNT,
+                profiles_root=Path(temporary) / "profiles",
+            )
+            rows = [
+                {
+                    "ProcessId": 41,
+                    "CommandLine": f'ChatGPT.exe --user-data-dir="{profile.user_data_dir}"',
+                },
+                {"ProcessId": 42, "CommandLine": "ChatGPT.exe"},
+                {
+                    "ProcessId": 43,
+                    "CommandLine": "ChatGPT.exe --user-data-dir=C:/another-profile",
+                },
+            ]
+            launcher = CodexLauncher(Mock(), Mock())
+
+            with patch.object(launcher, "_root_process_rows", return_value=rows):
+                running = launcher.running_profile_ids([Profile.system_default(), profile])
+
+            self.assertEqual(running, {Profile.system_default().id, profile.id})
+
+    def test_stop_profile_forces_only_residual_profile_process_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            profile = Profile.create(
+                name="Work",
+                kind=ProfileKind.ACCOUNT,
+                profiles_root=Path(temporary) / "profiles",
+            )
+            guard = Mock()
+            launcher = CodexLauncher(Mock(), guard)
+            tracked_process = Mock()
+            launcher._running[profile.id] = RunningProfile(profile.id, tracked_process)
+
+            with patch.object(launcher, "_profile_process_ids", return_value=[4242]), patch.object(
+                launcher, "_request_close_processes"
+            ) as request_close, patch.object(
+                launcher, "_wait_for_profile_exit", side_effect=[False, True]
+            ), patch.object(launcher, "_terminate_process_trees") as terminate:
+                stopped = launcher.stop_profile(profile)
+
+            self.assertTrue(stopped)
+            guard.snapshot_if_valid.assert_called_once_with(profile)
+            request_close.assert_called_once_with([4242])
+            terminate.assert_called_once_with([4242])
+            self.assertNotIn(profile.id, launcher._running)
+
+    def test_stop_profile_avoids_force_when_normal_close_succeeds(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            profile = Profile.create(
+                name="Work",
+                kind=ProfileKind.ACCOUNT,
+                profiles_root=Path(temporary) / "profiles",
+            )
+            launcher = CodexLauncher(Mock(), Mock())
+
+            with patch.object(launcher, "_profile_process_ids", return_value=[5151]), patch.object(
+                launcher, "_request_close_processes"
+            ), patch.object(launcher, "_wait_for_profile_exit", return_value=True), patch.object(
+                launcher, "_terminate_process_trees"
+            ) as terminate:
+                stopped = launcher.stop_profile(profile)
+
+            self.assertTrue(stopped)
+            terminate.assert_not_called()
+
+    def test_restart_profile_stops_before_launching_again(self) -> None:
+        profile = Profile.system_default()
+        launcher = CodexLauncher(Mock(), Mock())
+        process = Mock()
+        running = RunningProfile(profile.id, process)
+
+        with patch.object(launcher, "stop_profile", return_value=True) as stop, patch.object(
+            launcher, "launch", return_value=running
+        ) as launch:
+            result = launcher.restart_profile(profile)
+
+        self.assertIs(result, running)
+        stop.assert_called_once_with(profile)
+        launch.assert_called_once_with(profile)
+
 
 class ServiceContracts(unittest.TestCase):
     def test_profile_list_starts_with_unpersisted_system_default(self) -> None:
@@ -182,6 +266,7 @@ class ServiceContracts(unittest.TestCase):
             repository = ProfileRepository(paths.database)
             launcher = Mock()
             launcher.is_running.return_value = False
+            launcher.is_profile_process_running.return_value = False
             service = ProfileService(paths, repository, launcher)
             service.initialize()
             profile = service.create_profile(name="Work", kind=ProfileKind.ACCOUNT)

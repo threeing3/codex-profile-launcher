@@ -61,9 +61,13 @@ class LauncherWindow:
         self.app_status_var = tk.StringVar(value="正在检测 Codex…")
         self.profile_status_var = tk.StringVar(value="未启动")
         self._running_profile_ids: frozenset[str] = frozenset()
+        self._process_poll_inflight = False
+        self._profile_action_inflight: str | None = None
         self._toast: tk.Label | None = None
         self._content_scrollbar_sync_job: str | None = None
         self.launch_button: tk.Button | None = None
+        self.close_process_button: ttk.Button | None = None
+        self.restart_button: ttk.Button | None = None
         self._launch_button_text = ""
         self._detail_value_labels: list[tk.Label] = []
         self._compact_layout = False
@@ -553,8 +557,11 @@ class LauncherWindow:
     def _show_profile(self, profile: Profile) -> None:
         self._clear_content()
         self.selected_profile = profile
-        running = self.service.launcher.is_running(profile.id)
-        self.profile_status_var.set("系统默认" if profile.is_system_default else ("运行中" if running else "未启动"))
+        running = profile.id in self._running_profile_ids or self.service.launcher.is_running(profile.id)
+        busy_for_profile = self._profile_action_inflight == profile.id
+        any_process_action_busy = self._profile_action_inflight is not None
+        if not busy_for_profile:
+            self.profile_status_var.set("运行中" if running else "未启动")
 
         title_row = ttk.Frame(self.content, style="Panel.TFrame")
         title_row.grid(row=0, column=0, sticky="ew")
@@ -575,8 +582,8 @@ class LauncherWindow:
         status = tk.Label(
             title_row,
             textvariable=self.profile_status_var,
-            bg=COLORS["accent_soft"] if profile.is_system_default else ("#EAF7ED" if running else "#F0F0F2"),
-            fg=COLORS["accent"] if profile.is_system_default else (COLORS["success"] if running else COLORS["idle"]),
+            bg=COLORS["accent_soft"] if busy_for_profile else ("#EAF7ED" if running else "#F0F0F2"),
+            fg=COLORS["accent"] if busy_for_profile else (COLORS["success"] if running else COLORS["idle"]),
             font=(FONT_FAMILY, 9, "bold"),
             padx=10,
             pady=4,
@@ -680,8 +687,35 @@ class LauncherWindow:
             font=(FONT_FAMILY, 9),
             anchor="w",
         ).grid(row=1, column=0, sticky="w", padx=(18, 12), pady=(0, 15))
-        self.launch_button = self._make_primary_button(launch_card, launch_text, self._launch_selected)
-        self.launch_button.grid(row=0, column=1, rowspan=2, padx=(8, 18), pady=14)
+        window_controls = tk.Frame(launch_card, bg=COLORS["launch_surface"], bd=0)
+        window_controls.grid(row=0, column=1, rowspan=2, padx=(8, 18), pady=14, sticky="e")
+        self.launch_button = self._make_primary_button(
+            window_controls,
+            "窗口已在运行" if running else launch_text,
+            self._launch_selected,
+        )
+        self.launch_button.pack(fill="x")
+        if running or any_process_action_busy:
+            self.launch_button.configure(state="disabled", cursor="arrow")
+
+        process_actions = tk.Frame(window_controls, bg=COLORS["launch_surface"], bd=0)
+        process_actions.pack(fill="x", pady=(8, 0))
+        self.restart_button = ttk.Button(
+            process_actions,
+            text="重启 Codex",
+            style="Secondary.TButton",
+            command=self._restart_selected,
+            state="normal" if running and not any_process_action_busy else "disabled",
+        )
+        self.restart_button.pack(side="left")
+        self.close_process_button = ttk.Button(
+            process_actions,
+            text="关闭进程",
+            style="Danger.TButton",
+            command=self._close_selected_process,
+            state="normal" if running and not any_process_action_busy else "disabled",
+        )
+        self.close_process_button.pack(side="left", padx=(8, 0))
 
         ttk.Label(self.content, text="其他操作", style="Overline.TLabel").grid(
             row=5, column=0, sticky="w", pady=(0, 10)
@@ -721,6 +755,8 @@ class LauncherWindow:
         for child in self.content.winfo_children():
             child.destroy()
         self.launch_button = None
+        self.close_process_button = None
+        self.restart_button = None
         self._detail_value_labels = []
 
     def _make_primary_button(self, parent: tk.Misc, text: str, command: Callable[[], None]) -> tk.Button:
@@ -792,8 +828,8 @@ class LauncherWindow:
             if query and query not in haystack:
                 continue
             if profile.is_system_default:
-                state = "默认"
-            elif self.service.launcher.is_running(profile.id):
+                state = "运行中" if profile.id in self._running_profile_ids else "默认"
+            elif profile.id in self._running_profile_ids or self.service.launcher.is_running(profile.id):
                 state = "运行中"
             elif profile.kind is ProfileKind.ACCOUNT:
                 state = "ChatGPT"
@@ -866,16 +902,25 @@ class LauncherWindow:
         profile = self.selected_profile
         if not profile:
             return
+        if self._profile_action_inflight is not None:
+            self._show_toast("请等待当前窗口操作完成", success=False)
+            return
+        if profile.id in self._running_profile_ids or self.service.launcher.is_running(profile.id):
+            self._show_toast("该 Codex 已在运行，可使用“重启 Codex”或“关闭进程”", success=False)
+            return
+        self._profile_action_inflight = profile.id
         self.profile_status_var.set("启动中…")
         if self.launch_button is not None:
             self.launch_button.configure(text="正在打开…", state="disabled", cursor="arrow")
         self._run_background(
             lambda: self.service.launch_profile(profile),
             lambda pid: self._on_launch_success(profile, pid),
-            lambda error: self._on_launch_error(error),
+            lambda error: self._on_launch_error(profile, error),
         )
 
     def _on_launch_success(self, profile: Profile, pid: int) -> None:
+        self._profile_action_inflight = None
+        self._running_profile_ids = self._running_profile_ids | {profile.id}
         self._render_profile_list(profile.id)
         self._show_profile(profile)
         self.profile_status_var.set("运行中")
@@ -883,23 +928,85 @@ class LauncherWindow:
         self.root.title(title)
         self._show_toast(f"{profile.name} 已启动 · PID {pid}")
         if self.launch_button is not None:
-            self.launch_button.configure(text="已启动", state="normal", cursor="hand2")
-            self.root.after(
-                1400,
-                lambda: self.launch_button.configure(text=self._launch_button_text)
-                if self.launch_button is not None and self.launch_button.winfo_exists()
-                else None,
-            )
+            self.launch_button.configure(text="窗口已在运行", state="disabled", cursor="arrow")
 
-    def _on_launch_error(self, error: Exception) -> None:
-        self.profile_status_var.set("启动失败")
-        if self.launch_button is not None:
-            self.launch_button.configure(text=self._launch_button_text, state="normal", cursor="hand2")
+    def _on_launch_error(self, profile: Profile, error: Exception) -> None:
+        self._profile_action_inflight = None
+        self._render_profile_list(profile.id)
+        self._show_profile(profile)
         self._show_toast("Codex 启动失败，请查看提示", success=False)
         messagebox.showerror("无法启动 Codex", str(error), parent=self.root)
 
+    def _close_selected_process(self) -> None:
+        profile = self.selected_profile
+        if not profile:
+            return
+        confirmed = messagebox.askyesno(
+            "关闭 Codex 进程",
+            f"关闭“{profile.name}”？\n\n"
+            "多开器会先请求正常退出；如果 5 秒后仍有后台残留，"
+            "只会强制结束此账户对应的进程树。项目和聊天数据不会删除。",
+            parent=self.root,
+        )
+        if not confirmed:
+            return
+        self._set_process_action_busy(profile, "正在关闭…")
+        self._run_background(
+            lambda: self.service.close_profile(profile),
+            lambda _result: self._on_close_success(profile),
+            lambda error: self._on_process_action_error(profile, "无法关闭 Codex", error),
+        )
+
+    def _restart_selected(self) -> None:
+        profile = self.selected_profile
+        if not profile:
+            return
+        confirmed = messagebox.askyesno(
+            "重启 Codex",
+            f"重启“{profile.name}”？\n\n"
+            "多开器会先请求正常退出，并在必要时清理该账户的后台残留进程，然后重新启动。",
+            parent=self.root,
+        )
+        if not confirmed:
+            return
+        self._set_process_action_busy(profile, "正在重启…")
+        self._run_background(
+            lambda: self.service.restart_profile(profile),
+            lambda pid: self._on_restart_success(profile, int(pid)),
+            lambda error: self._on_process_action_error(profile, "无法重启 Codex", error),
+        )
+
+    def _set_process_action_busy(self, profile: Profile, status: str) -> None:
+        self._profile_action_inflight = profile.id
+        self.profile_status_var.set(status)
+        for button in (self.launch_button, self.close_process_button, self.restart_button):
+            if button is not None:
+                button.configure(state="disabled")
+
+    def _on_close_success(self, profile: Profile) -> None:
+        self._profile_action_inflight = None
+        self._running_profile_ids = self._running_profile_ids - {profile.id}
+        self._render_profile_list(profile.id)
+        self._show_profile(profile)
+        self._show_toast(f"{profile.name} 的 Codex 进程已关闭")
+
+    def _on_restart_success(self, profile: Profile, pid: int) -> None:
+        self._profile_action_inflight = None
+        self._running_profile_ids = self._running_profile_ids | {profile.id}
+        self._render_profile_list(profile.id)
+        self._show_profile(profile)
+        self.root.title(f"Codex Profiles · PID {pid}")
+        self._show_toast(f"{profile.name} 已重启 · PID {pid}")
+
+    def _on_process_action_error(self, profile: Profile, title: str, error: Exception) -> None:
+        self._profile_action_inflight = None
+        self._render_profile_list(profile.id)
+        self._show_profile(profile)
+        self._show_toast(title, success=False)
+        messagebox.showerror(title, str(error), parent=self.root)
+
     def _open_selected(self) -> None:
-        if self.selected_profile:
+        if self.selected_profile and self._profile_action_inflight != self.selected_profile.id:
             path = self.selected_profile.codex_home if self.selected_profile.is_system_default else self.selected_profile.codex_home.parent
             self.service.open_directory(path)
 
@@ -944,20 +1051,32 @@ class LauncherWindow:
 
     def _poll_processes(self) -> None:
         self.service.launcher.refresh()
-        running_profile_ids = frozenset(
-            profile.id
-            for profile in self.profiles
-            if not profile.is_system_default and self.service.launcher.is_running(profile.id)
+        if not self._process_poll_inflight:
+            self._process_poll_inflight = True
+            profiles = tuple(self.profiles)
+            self._run_background(
+                lambda: self.service.launcher.running_profile_ids(profiles),
+                self._on_process_poll_success,
+                self._on_process_poll_error,
+            )
+        self.root.after(1500, self._poll_processes)
+
+    def _on_process_poll_success(self, detected_ids: object) -> None:
+        self._process_poll_inflight = False
+        running_profile_ids = frozenset(detected_ids) | frozenset(
+            profile.id for profile in self.profiles if self.service.launcher.is_running(profile.id)
         )
         if running_profile_ids != self._running_profile_ids:
             self._running_profile_ids = running_profile_ids
             self._render_profile_list()
-        if self.selected_profile and not self.selected_profile.is_system_default:
+        if self.selected_profile:
             running = self.selected_profile.id in running_profile_ids
             expected = "运行中" if running else "未启动"
             if self.profile_status_var.get() != expected:
                 self._show_profile(self.selected_profile)
-        self.root.after(1500, self._poll_processes)
+
+    def _on_process_poll_error(self, _error: Exception) -> None:
+        self._process_poll_inflight = False
 
     @staticmethod
     def _profile_type_label(profile: Profile) -> str:

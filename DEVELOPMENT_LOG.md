@@ -80,6 +80,24 @@
 - Added four contract tests covering snapshot/restore, backup repair, no-snapshot safety, and duplicate-window prevention. The full suite now contains 27 passing tests.
 - Test log: `build-logs/project-state-guard-20260811-final.log`.
 
+## 2026-08-13 — Window process controls
+
+- Reproduced the blocked-launch state where a Codex window had been closed but its root `ChatGPT.exe` process remained alive. The launcher detected the process correctly, but offered no action to close or restart it.
+- Added one-query process discovery for the system-default profile and all isolated profiles, including processes created before the current launcher session.
+- Added explicit `关闭进程` and `重启 Codex` controls to each profile. Close first requests a normal window shutdown, waits five seconds, and then force-terminates only the selected profile's remaining process tree. Restart uses the same full stop flow before launching again.
+- Valid project state is snapshotted before process cleanup. No profile directory, project, or chat record is deleted.
+- The account list, status badge, launch button, and process controls now reflect externally detected processes instead of relying only on the launcher's in-memory process map.
+- Added four contract tests covering profile-specific discovery, graceful close, residual-process termination, and stop-before-restart ordering. The full suite now contains 31 passing tests.
+- Test and build log: `build-logs/process-control-20260813.log`.
+
+## 2026-08-13 — Runtime dependency packaging guard
+
+- The first process-control build failed at startup with `_ctypes` reporting a DLL load error. The build warning had listed unresolved Conda runtime libraries, but the earlier smoke check incorrectly treated the still-open error process as a successful launch.
+- Confirmed that the broken `_internal` directory lacked `ffi.dll`, `libbz2.dll`, `liblzma.dll`, `sqlite3.dll`, `tcl86t.dll`, and `tk86t.dll`, while the last working release contained all six.
+- Updated `build_exe.ps1` to resolve the active Python base directory, add each required runtime DLL explicitly, and fail the build if any expected DLL is absent from the packaged application.
+- Added an automatic runtime verification step to every one-folder build. It waits up to 15 seconds for the exact expected launcher window title and rejects an exception dialog instead of merely checking whether a process remains alive.
+- Rebuilt and replaced the formal application. The verified runtime opened normally with all six dependencies present.
+
 ## Verification
 
 ```powershell
@@ -89,4 +107,4 @@ python -m unittest discover -s tests -v
 .\build_release.ps1
 ```
 
-The current test suite contains 27 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, browser settings, shared-skill migration safety, and project-state recovery. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\`, and the installable release artifact is emitted under `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`; both are ignored by Git.
+The current test suite contains 31 contract tests covering profile storage, directory isolation, provider configuration boundaries, default Codex behavior, browser settings, shared-skill migration safety, project-state recovery, and profile-specific process control. The current one-folder build is emitted under `dist-v0.10\CodexProfiles\`, and the installable release artifact is emitted under `dist-v0.10\CodexProfiles-Setup-v0.10.0.exe`; both are ignored by Git.
